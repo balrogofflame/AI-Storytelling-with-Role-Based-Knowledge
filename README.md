@@ -1,175 +1,182 @@
-# 銀鈴旅店失竊案
+# Silver Bell Inn: AI Storytelling with Role-Based Knowledge
 
-Windows 本機 AI 問答原型。以旅店老闆與主持人兩種身分，觀察同一問題在不同可讀設定下的回答差異。可依現有資料回答，或開啟「即興補設定」讓 AI 創作缺少的背景並寫回 JSON。無第三方套件，不需安裝前端工具。
+A local Windows prototype that lets an innkeeper and a game master answer questions using different story knowledge. AI can also invent missing background details and save them for later questions.
 
-## 目前進度
+The application uses a Python standard-library backend, a plain HTML/CSS/JavaScript interface, and the OpenAI Responses API. No third-party Python packages or frontend build tools are required. The interface and in-world replies are in Traditional Chinese.
 
-- 已建立場景資料、後端、網頁、連線檢查、啟動工具與即興設定保存功能。
-- 已確認本機可使用 `python`，版本為 3.13.9。程式需要 Python 3.10 以上。
-- 2026-10-27 已確認本機可透過 HTTPS 連至 OpenAI API：未帶金鑰存取模型清單收到 401，屬預期的驗證拒絕；沒有呼叫模型。這不代表帳號權限或額度已通過。
-- 使用者已回報真實連線測試成功。2026-10-28 另以 `gpt-6-luna` 在暫存場景實測「天氣即興新增、寫入備份、下一題讀取」，結果見 TESTS.md；該次暫存測試未改動正式資料。其他角色案例仍待完整實測。
-- 詳細驗證範圍見 TESTS.md；預期行為與實際測試結果分開記錄。
+## Quick start
 
-## 故事敘述到 AI 問答
+Requirements:
 
-初始故事由人工整理為六筆 JSON 設定，沒有額外呼叫 AI 轉換原文。問答期間可以由 AI 新增設定。
+- Windows with PowerShell and Python 3.10 or later. Development was tested with Python 3.13.9.
+- An OpenAI API key, available API credits, and access to a text model that supports the Responses API and Structured Outputs.
+- Network access to `https://api.openai.com`.
 
-```text
-story.txt（一段完整故事）
-    ↓ 人工拆成事實、標記可讀身分
-scenario.json（問答時使用的設定來源）
-    ↓ 即興模式：設定編輯器檢查完整世界設定，提出新增內容
-    ↓ server.py 依本次選擇的身分篩選（含本次新增）
-本次可讀設定＋回答規則＋使用者問題
-    ↓ 呼叫 AI API
-    ↓ 回答成功後，備份並將新增內容寫回 scenario.json
-回答＋實際模型名稱＋角色資料＋已保存的新設定
-```
-
-故事原文見 [story.txt](story.txt)，整理後資料見 [scenario.json](scenario.json)。兩個檔案中的對照如下：
-
-| 故事情節 | JSON 編號 | 老闆可知 | 主持人可知 |
-| --- | --- | --- | --- |
-| 旅店位於城鎮北門附近 | F01 | 是 | 是 |
-| 洛恩昨晚入住 | F02 | 是 | 是 |
-| 洛恩向老闆自稱販售布料 | F03 | 是 | 是 |
-| 午夜聽見有人下樓，沒有看清是誰 | F04 | 是 | 是 |
-| 洛恩真實身分是走私者 | F05 | 否 | 是 |
-| 寶石藏在馬廄地板下 | F06 | 否 | 是 |
-
-`id` 是資料編號、`text` 是事實內容、`allowed_roles` 是可讀身分清單（`gm` 為主持人、`innkeeper` 為旅店老闆）。以上是初始六筆；即興新增從 F07 起接續編號，不改寫原有資料。
-
-API 不會自行開啟本機的 JSON 檔。每次送出問題時，後端讀取 `scenario.json`；即興模式的「設定編輯」API 步驟會讀取完整世界設定，以檢查重複、矛盾及已存在的秘密，接著「角色回答」API 步驟只取得該角色可讀的資料。老闆回答步驟不取得 F05、F06；主持人回答步驟可以取得。`story.txt` 不會隨問答請求送出。
-
-日後若修改故事，必須人工同步更新 `scenario.json`；只改 `story.txt` 不會改變問答內容。JSON 儲存後，下一次送出就會重新讀取，不需要重新產生資料或重啟服務。模型是否確實遵守設定，仍需以實際回答確認。
-
-## 即興補設定與自動保存
-
-網頁預設勾選「遇到未知內容時，即興補設定並永久保存」。例如問「昨晚天氣如何？」，AI 可以創作天氣設定，先以該設定回答，再保存成 F07 等新紀錄。下一題會重新讀取已保存的資料，不必保留聊天歷史。
-
-- 一般背景（如天氣、老闆姓名）可設為主持人與老闆共知；案件秘密只能由主持人補寫，僅主持人可讀。
-- 已知的主持人秘密不等於未設定。老闆追問寶石位置時，設定編輯器應辨識 F06 已存在，保留「老闆不知道」，而非另造一個位置。
-- 設定編輯器每次最多提出三筆新事實。程式檢查格式、分配新編號、排除文字完全相同的項目，不能由模型指定覆寫舊 ID。
-- 回答成功並且檔案保存成功後，畫面才顯示答案與「本次新增設定（已保存）」。模型失敗、輸出格式錯誤或寫入失敗都不宣稱新增成功。
-- 寫入前保留 `scenario.json.bak`，內容為最近一次新增之前的完整資料。以暫存檔完成寫入後再替換原檔，並檢查回答期間是否已有其他修改，避免覆寫外部變更。
-- 要恢復上一版，先關閉服務，再將 `scenario.json.bak` 的內容複製回 `scenario.json`。這會移除最近一次追加的設定；備份只保留最近一次。
-- `story.txt` 保留初始故事，不自動改寫；後續新增以 `scenario.json` 為準。
-
-取消勾選後即為原本的只讀模式：只依既有設定回答，缺少資料時表示不知道，不新增或保存設定。
-
-即興模式每題呼叫兩次模型（設定編輯、角色回答），只讀模式一次；兩者皆可能產生 API 費用，不自動重試。相較初版，完整世界設定現在會提供給設定編輯步驟。模型的語意判斷仍可能漏掉矛盾、重複或秘密關聯；程式格式檢查不等同保證故事永不衝突。
-
-切換身分、關閉頁面或停止前端等待，不會取消已送達後端的保存流程。原請求仍可能完成並追加設定；畫面會捨棄舊身分的回覆。
-
-更新此功能後，請先在原 PowerShell 按 Ctrl+C 關閉服務，再依啟動指令重開並重新整理網頁。只改 JSON 不必重啟，但程式更新需要重啟。
-
-## 先準備 AI 連線
-
-1. 開啟 [OpenAI API 平台](https://platform.openai.com/)，登入或建立帳號，選定用於此原型的 API 專案。
-2. 在 API 平台的 Billing／帳務頁面，確認付款方式、可用額度及用量限制。帳號是否需要儲值或其他啟用程序，以平台實際顯示為準。不要只以能開啟 ChatGPT 判定 API 額度已就緒。
-3. 開啟 [API keys](https://platform.openai.com/api-keys)，為該專案建立金鑰。金鑰需具有呼叫 Responses API 的權限。只在本機安全保存，不貼進聊天、前端網頁或報告。
-4. 在平台確認該專案可用且支援文字 Responses API 的模型，複製完整模型 ID。此程式使用 `OPENAI_MODEL`，不預設你的帳號可使用哪一款模型，也不會自動改用其他模型。
-5. 確認本機網路可連至 `https://api.openai.com`。公司或學校網路若有代理伺服器或憑證限制，需使用其核准的連線設定。
-
-模型價格依 [官方定價](https://developers.openai.com/api/docs/pricing) 查詢。每次連線測試及網頁送出都可能產生費用；範例按鈕只填入問題。
-
-## 最容易的啟動方式
-
-### 建議的低成本模型
-
-此原型可先測試 `gpt-6-luna`。依 2026-10-27 查閱的 [官方模型文件](https://developers.openai.com/api/docs/models/gpt-6-luna)，它支援 Responses API，標準短上下文文字價格為每百萬輸入 tokens US$0.10、輸出 US$0.50。實際使用資格及帳務仍以你的 API 專案為準。
-
-當 `OPENAI_MODEL` 為 `gpt-6-luna`，原型會設定 `reasoning.effort = none`，角色回答最多輸出 512 tokens，設定編輯的結構化輸出最多 1024 tokens。其他模型的角色回答上限仍為 2048 tokens；不會自動切換到更貴的模型。回答品質仍需實測。
-
-在專案資料夾開啟 PowerShell，執行下列指令即可指定模型、隱藏輸入金鑰、測試一次真實連線並啟動網頁：
+Open PowerShell in the project directory and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Model gpt-6-luna -Port 8001
 ```
 
-輸入金鑰後按 Enter，成功啟動再開啟 <http://127.0.0.1:8001>。使用 8001 可避開目前可能仍開啟的 8000 預覽。金鑰不需選定或綁定單一模型；本工具透過 `-Model` 設定該次啟動所用的 `OPENAI_MODEL`，但專案仍須具備該模型權限。
+1. Paste your API key at the hidden input prompt and press Enter. No characters appear while you enter the key.
+2. The launcher makes one live connection test. This may incur API charges and is not automatically retried.
+3. After the check succeeds, open <http://127.0.0.1:8001>.
+4. Select a role, enter a question, and submit it.
+5. Press Ctrl+C in PowerShell when you finish.
 
-### 自行選擇模型
+The launcher passes the key to its Python child processes in memory. It does not write the key to project files and restores the previous key and model environment settings when it exits. You may need to enter the key again on the next launch.
 
-在此資料夾開啟 PowerShell，執行：
+`-ExecutionPolicy Bypass` applies only to this PowerShell child process. It does not change the permanent system execution policy.
+
+To choose a different model interactively, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
-此指令的執行原則僅作用於這次子程序，不會變更系統的永久設定。
+The default port is 8000. Use `-Port 8001` or another available port if it is already occupied. The model must be available to your API project; the application never automatically switches to a more expensive model.
 
-1. 輸入模型 ID。
-2. 在隱藏輸入提示貼上 API 金鑰並按 Enter。輸入時不顯示文字屬正常行為。
-3. 工具會送出一次真實 AI 問答，可能產生費用，不會自動重試。
-4. 成功後啟動本機服務，瀏覽器開啟 <http://127.0.0.1:8000>。
-5. 展示結束後回到 PowerShell 按 Ctrl+C。
+## Story preparation: narrative to JSON
 
-若目前預覽已使用 8000，先關閉原服務，或使用下方的 `-Port 8001` 指令啟動另一個連接埠。
+The initial story is in [story.txt](story.txt). Its structured facts are in [scenario.json](scenario.json).
 
-金鑰僅提供給啟動程序及其 Python 子程序，不寫入檔案；工具結束時還原原本的環境設定。重開工具時可能需要再次輸入。
+**An AI model can convert story settings into JSON, including individual facts and their permitted roles. For this prototype test, we prepared the initial JSON manually.** Automated initial story-to-JSON conversion is not integrated into the current application. If AI is used for preparation, review the extracted facts and role permissions before using them.
 
-只測試連線而不啟動網頁：
+Each fact has three fields:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -CheckOnly
+```json
+{
+  "id": "F01",
+  "text": "A story fact.",
+  "allowed_roles": ["gm", "innkeeper"]
+}
 ```
 
-連接埠已占用時：
+- `id`: a unique fact identifier.
+- `text`: the fact supplied to the model.
+- `allowed_roles`: the roles allowed to know the fact. `gm` means game master; `innkeeper` means innkeeper.
+
+The initial six facts are:
+
+| Fact | ID | Innkeeper | Game master |
+| --- | --- | --- | --- |
+| The inn is near the town's north gate. | F01 | Known | Known |
+| Lorn stayed at the inn last night. | F02 | Known | Known |
+| Lorn claimed to sell cloth. | F03 | Known | Known |
+| The innkeeper heard someone going downstairs at midnight but could not identify them. | F04 | Known | Known |
+| Lorn is actually a smuggler. | F05 | Hidden | Known |
+| The stolen gem is beneath the stable floor. | F06 | Hidden | Known |
+
+The JSON may also contain facts added during later questions. The original six facts remain the initial reference set.
+
+The application does not read `story.txt` during questions. Editing only that file will not change the answers; manually synchronize any intended changes to `scenario.json`. The backend reloads JSON on every question, so JSON-only changes do not require a restart. Restart the service after changing Python code.
+
+## Question and answer flow
+
+1. The browser sends the selected role, question, and improvisation setting to the local backend.
+2. The backend reads and validates `scenario.json`.
+3. With improvisation enabled, a world editor reads the complete world setting and proposes missing facts.
+4. The backend filters the existing and proposed facts by the selected role.
+5. The answering character receives its permitted facts and the question.
+6. After a successful answer, the backend saves any additions, then returns the answer, actual model name, role context, and saved additions.
+
+The API does not directly open local JSON files. The backend reads the file and puts the relevant text into each model request.
+
+The editor and answering character have different contexts. The editor can read all world facts to check existing secrets and potential conflicts. The innkeeper's answering request excludes F05 and F06; the game master's answering request can include them. The complete `story.txt` is not sent with either request.
+
+Questions are independent: the application does not retain conversation history or reuse a previous cloud conversation ID. Persistent facts in JSON provide continuity across questions.
+
+## Improvisation and automatic saving
+
+Improvisation is enabled by default. For example, if the weather is missing, AI can invent a suitable weather detail, use it in the answer, and save it as the next available fact ID. Later questions receive that saved detail.
+
+- Ordinary background details, such as weather or the innkeeper's name, can be shared by both roles.
+- New case secrets can be introduced only when the game master asks, and remain game-master-only.
+- An existing hidden fact is not a missing world detail. If the innkeeper asks where the gem is, the editor should recognize that F06 already defines the location rather than inventing a replacement.
+- The editor can propose at most three new facts per question. The backend validates their format, assigns new IDs, and excludes exact text duplicates. Model output cannot replace an existing ID.
+- The page displays an answer and saved additions only after generation and persistence succeed. Failed model requests, invalid structured output, or write failures are not reported as successful additions.
+- Before each successful addition, `scenario.json.bak` stores the previous complete file. A temporary file and atomic replacement protect the main file during writes. A file lock and snapshot comparison prevent competing writers from silently overwriting each other.
+- The backup contains only the version before the most recent addition. To restore it, stop the service and copy its contents back into `scenario.json`.
+- `story.txt` remains the initial narrative. Generated additions are stored in `scenario.json` and are not written back into the narrative.
+
+Disable the improvisation checkbox to use read-only mode. The character then answers only from existing permitted facts, admits missing information, and does not add or save new facts.
+
+Improvisation uses two model calls per question: one editor call and one character-answering call. Read-only mode uses one. Both may incur API charges and neither is automatically retried. The example model uses `reasoning.effort = none`, with up to 512 output tokens for character answers and 1024 for structured editor output. Other models retain a 2048-token answer limit.
+
+Switching roles clears the displayed answer and context while keeping the question. The browser discards responses for an old role. Switching roles, closing the page, or canceling browser waiting does not cancel work already received by the backend: the request may still incur charges and save additions. The backend handles one model request sequence at a time; a new request may need to wait until the previous one finishes.
+
+## API configuration and connection checks
+
+Create or select a project in the [OpenAI API platform](https://platform.openai.com/), confirm its billing and usage limits, and create a key on the [API keys page](https://platform.openai.com/api-keys). The key needs permission to use the Responses API. Keep it on your own machine and out of the repository, browser code, reports, and chat messages.
+
+Use a model available to that project that supports both text Responses API requests and Structured Outputs. The launcher accepts the model through `-Model` and passes it as `OPENAI_MODEL`. The backend reads `OPENAI_API_KEY` server-side. This version uses the official endpoint and rejects a custom `OPENAI_BASE_URL`.
+
+The example uses `gpt-6-luna`, which was used for the recorded live test. Check [current model details](https://developers.openai.com/api/docs/models/gpt-6-luna) and [API pricing](https://developers.openai.com/api/docs/pricing) for availability and charges.
+
+To check the connection without opening the web service:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Port 8001
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Model gpt-6-luna -CheckOnly
 ```
 
-## 尚未有金鑰也能查看畫面
+To inspect local configuration without a network call:
 
 ```powershell
 python check_ai.py
-python server.py
 ```
 
-第一行只檢查本機設定，不連網、不產生 API 費用。第二行啟動網頁，開啟 <http://127.0.0.1:8000>。沒有金鑰時，詢問會顯示設定提示，不會產生假答案。
+If you have already securely set `OPENAI_API_KEY` and `OPENAI_MODEL` in the same terminal, run `python check_ai.py --live` for one potentially billable connection test, then `python server.py` to start the service.
 
-已透過其他安全方式設定 `OPENAI_API_KEY` 與 `OPENAI_MODEL` 的使用者，可在相同終端執行 `python check_ai.py --live` 測試真實連線，再執行 `python server.py`。
+You can preview the interface without a key by running `python server.py` and opening <http://127.0.0.1:8000>. Questions will display a configuration message instead of a fabricated model answer.
 
-## 展示與限制
+Example question buttons only fill the input; they do not submit a paid request.
 
-先以老闆問「洛恩是什麼人？」，再切到主持人問相同問題。也可比較「失竊的寶石藏在哪？」。成功後可展開「本次提供給回答角色的資料」，確認初始老闆為 F01–F04、主持人為 F01–F06；新增後筆數會增加。
+## Validation and limitations
 
-切換身分會清除回答及資料，取消前端等待並捨棄舊回覆。取消前端等待不代表已取消供應商端的運算或費用；後端一次只允許一個模型請求，前一請求未結束時可能顯示稍候再試。
+The recorded development checks include 28 passing offline tests. On October 28, 2026, a live `gpt-6-luna` test on a temporary scene verified weather generation, saving, backup creation, and reuse in the next question. That temporary test did not change the production scene. See [TESTS.md](TESTS.md) for the detailed record; it is currently in Traditional Chinese.
 
-只綁定 127.0.0.1，僅提供固定網頁與問答端點，不開放資料夾下載。身分選單是示範工具，沒有登入驗證。不要把它當成正式多人權限系統。模型可能猜測或補充未記載的內容，需按測試案例實測。
+Run offline tests with:
 
-## 常見問題
+```powershell
+python -m unittest -v
+```
 
-| 顯示狀況 | 處理方式 |
+Role and HTTP tests use an independent snapshot of the original F01-F06 facts, so later additions do not change their assertions. Persistence tests modify temporary copies instead of the production scene. Offline fixtures verify program behavior, not every possible live-model answer.
+
+The application binds only to `127.0.0.1` and serves explicit routes rather than exposing the project folder. Role selection demonstrates knowledge differences and does not authenticate users. This is a single-scene local prototype, not a production multiplayer authorization system.
+
+The model can still miss a contradiction, semantic duplicate, or secret relationship. Programmatic format checks do not guarantee a consistent story or prevent every possible spoiler. Broader live testing of role-specific and secret-related cases remains necessary.
+
+## Troubleshooting
+
+| Problem | Action |
 | --- | --- |
-| 尚未設定 API 金鑰／模型 | 使用 start.ps1 依提示輸入 |
-| 金鑰無效 | 確認複製完整、金鑰未撤銷且屬於正確專案 |
-| 無法使用模型或服務 | 核對模型 ID、Responses API 支援情況及專案權限 |
-| 額度或用量上限不足 | 至 API 平台帳務與限制頁面確認，不連續重試 |
-| 請求過於頻繁 | 等待後手動重試 |
-| 連線失敗 | 檢查網路、代理與系統憑證，不停用 HTTPS 憑證驗證 |
-| 等待逾時／未完成回答 | 稍後手動重試，必要時檢查模型設定；原請求仍可能產生費用 |
-| OPENAI_BASE_URL 設定不符 | 此版本固定使用官方端點，請移除自訂設定 |
+| Missing key or model | Start with `start.ps1` and enter the required settings. |
+| Invalid key | Check that the key is complete, active, and belongs to the intended project. |
+| Model or service unavailable | Verify the model ID, API support, project permissions, and account status. |
+| Insufficient credits or usage allowance | Check API billing and limits before retrying. |
+| Rate limit or backend busy | Wait, then retry manually. |
+| Network failure | Check the connection, approved proxy configuration, and system certificates. Keep HTTPS certificate verification enabled. |
+| Timeout or incomplete answer | Retry manually later or review model settings. The original request may still incur charges. |
+| Failed save | Check file permissions and disk space. The application will not present unsaved additions as a successful result. |
+| Scene changed during generation | Another writer changed the file. Your changes are preserved; ask again using the latest scene. |
+| Unsupported `OPENAI_BASE_URL` | Remove the custom value and use the official OpenAI endpoint. |
 
-## 檔案與檢查
+## Project files
 
-- `server.py`：本機網頁、角色篩選與問答端點。
-- `ai_client.py`：真實 API 呼叫、設定檢查及錯誤訊息。
-- `check_ai.py`：離線設定檢查與可選的付費連線測試。
-- `story.txt`：一段固定故事原文，供作者閱讀及整理設定，不直接傳給模型。
-- `scenario.json`：初始六筆與後續新增設定，由後端讀取及保存。
-- `scenario_store.py`：設定驗證、編號、寫入鎖、原子替換與備份。
-- `scenario.json.bak`：最近一次保存前的備份，首次成功新增後才出現。
-- `web/`：原生 HTML、CSS、JavaScript。
-- `start.ps1`：隱藏輸入金鑰、測試連線及啟動。
-- `test_app.py`：不呼叫真實 AI 的角色資料、HTTP 與連線錯誤測試。
+| File | Purpose |
+| --- | --- |
+| `server.py` | Local web service, role filtering, and question handling. |
+| `ai_client.py` | API calls, structured output, configuration checks, and safe error messages. |
+| `scenario_store.py` | Fact validation, IDs, locking, atomic persistence, and backups. |
+| `check_ai.py` | Offline configuration checks and optional live connection tests. |
+| `start.ps1` | Hidden key input, connection testing, and service startup. |
+| `story.txt` | Initial narrative, prepared for the prototype. |
+| `scenario.json` | Initial facts and subsequent additions. |
+| `web/` | Plain HTML, CSS, and JavaScript interface. |
+| `test_app.py` | Offline tests. |
+| `TESTS.md` | Validation record. |
 
-執行離線程式測試：`python -m unittest -v`。這些測試不代表模型回答品質已驗收。
+Runtime files such as `scenario.json.bak`, `scenario.json.lock`, and temporary write files are not committed. Credentials, presentations, planning documents, preview images, and local test exports are excluded from repository uploads.
 
-角色與 HTTP 測試使用初始六筆設定的獨立快照，不受執行過程中新增的 F07 等設定影響。保存測試只修改暫存副本，不會覆寫你的場景。
-
-儲存庫只包含執行原型需要的程式、場景、操作文件與測試。API 金鑰、簡報、規劃文件、預覽截圖、備份及本機測試輸出均不提交。
-
-官方依據：[API quickstart](https://developers.openai.com/api/docs/quickstart)、[Text generation](https://developers.openai.com/api/docs/guides/text)、[Error codes](https://developers.openai.com/api/docs/guides/error-codes)。
+Official references: [API quickstart](https://developers.openai.com/api/docs/quickstart), [Text generation](https://developers.openai.com/api/docs/guides/text), and [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
