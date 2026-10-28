@@ -1,0 +1,56 @@
+[
+  {
+    "id": "F01",
+    "text": "銀鈴旅店位於城鎮北門附近。",
+    "allowed_roles": [
+      "gm",
+      "innkeeper"
+    ]
+  },
+  {
+    "id": "F02",
+    "text": "商人洛恩昨晚入住銀鈴旅店。",
+    "allowed_roles": [
+      "gm",
+      "innkeeper"
+    ]
+  },
+  {
+    "id": "F03",
+    "text": "洛恩向旅店老闆自稱販售布料。",
+    "allowed_roles": [
+      "gm",
+      "innkeeper"
+    ]
+  },
+  {
+    "id": "F04",
+    "text": "旅店老闆在午夜聽見有人下樓，但沒有看清是誰。",
+    "allowed_roles": [
+      "gm",
+      "innkeeper"
+    ]
+  },
+  {
+    "id": "F05",
+    "text": "洛恩的真實身分是走私者。",
+    "allowed_roles": [
+      "gm"
+    ]
+  },
+  {
+    "id": "F06",
+    "text": "失竊的寶石藏在馬廄地板下。",
+    "allowed_roles": [
+      "gm"
+    ]
+  },
+  {
+    "id": "F07",
+    "text": "昨晚天氣晴朗，夜裡沒有下雨。",
+    "allowed_roles": [
+      "gm",
+      "innkeeper"
+    ]
+  }
+]

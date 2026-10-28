@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.log
+.venv/
+dist/
+openai api key.txt
+scenario.json.bak
+scenario.json.lock
+.scenario-*.tmp
+
+# Local credentials and private configuration
+*api*key*.txt
+*API*KEY*.txt
+*.pem
+*.key
+
+# Planning, promotional materials, and local preview artifacts
+*.pptx
+*_AI問答原型規劃.md
+*-preview.png
+LIVE_TESTS.json
+.publish/
